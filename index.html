@@ -25,13 +25,17 @@
             background-color: #33a0af;
             color: white;
         }
+        .missed {
+            background-color: red;
+            color: white;
+        }
     </style>
 </head>
 
 <body>
     <h1>Chore Marks</h1>
     <p>
-        For each person, check the box if they completed their chore for that day.
+        For each person, check the box if they missed their chore for that day.
     </p>
     <table>
         <thead>
@@ -47,7 +51,6 @@
         </thead>
         <tbody>
             <!-- Rows will be added dynamically -->
-
         </tbody>
     </table>
 </body>
@@ -66,7 +69,7 @@
         loadChoreMarks();
     }
 
-    setupCheckboxListeners();
+    setupCellListeners();
 
     function initializeChoreMarks() {
         const initData = { month: currentMonth, year: currentYear, cells: [] };
@@ -93,7 +96,8 @@
 
             for (let i = 0; i < 5; i++) {
                 const personCell = document.createElement('td');
-                personCell.innerHTML = `<input type="checkbox" value="off" />`;
+                personCell.textContent = '';
+                personCell.classList.add('person-cell');
                 row.appendChild(personCell);
             }
 
@@ -130,9 +134,15 @@
             dayCell.textContent = cellData.day;
             row.appendChild(dayCell);
 
-            cellData.chores.forEach((completed, choreIndex) => {
+            cellData.chores.forEach((marked, choreIndex) => {
                 const personCell = document.createElement('td');
-                personCell.innerHTML = `<input type="checkbox" value="${completed ? 'on' : 'off'}" ${completed ? 'checked' : ''} />`;
+                personCell.textContent = marked ? 'X' : '';
+                personCell.classList.add('person-cell');
+
+                if (marked) {
+                    personCell.classList.add('missed');
+                }
+
                 row.appendChild(personCell);
             });
 
@@ -140,14 +150,21 @@
         });
     }
 
-    function setupCheckboxListeners() {
-        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach((checkbox, index) => {
-            checkbox.addEventListener('change', () => {
+    function setupCellListeners() {
+        const cells = document.querySelectorAll('.person-cell');
+        cells.forEach((cell, index) => {
+            cell.addEventListener('click', () => {
                 const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
                 const rowIndex = Math.floor(index / 5);
                 const personIndex = index % 5;
-                data.cells[rowIndex].chores[personIndex] = checkbox.checked;
+                const marked = !data.cells[rowIndex].chores[personIndex];
+                data.cells[rowIndex].chores[personIndex] = marked;
+                cell.textContent = marked ? 'X' : '';
+                if (marked) {
+                    cell.classList.add('missed');
+                } else {
+                    cell.classList.remove('missed');
+                }
                 window.localStorage.setItem('choreMarksData', JSON.stringify(data));
             });
         });
