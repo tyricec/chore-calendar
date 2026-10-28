@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Chore Marks</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <style>
+        html {
+            font-family: "Helvetica", "Arial", sans-serif;
+        }
+
+        table {
+            table-layout: fixed;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            padding: 8px;
+            text-align: center;
+            border: 1px solid #f0f0f0;
+        }
+        .today {
+            background-color: #33a0af;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Chore Marks</h1>
+    <p>
+        For each person, check the box if they completed their chore for that day.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th scope="col" colSpan="2">Date</th>
+                <th scope="col">Day</th>
+                <th scope="col">Michael</th>
+                <th scope="col">Shocka</th>
+                <th scope="col">Brooke</th>
+                <th scope="col">Jacob</th>
+                <th scope="col">Duke</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Rows will be added dynamically -->
+
+        </tbody>
+    </table>
+</body>
+
+<script>
+    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+
+    if (!window.localStorage.getItem('choreMarksData')) {
+        initializeChoreMarks();
+    } else {
+        loadChoreMarks();
+    }
+
+    setupCheckboxListeners();
+
+    function initializeChoreMarks() {
+        const initData = { month: currentMonth, year: currentYear, cells: [] };
+
+        for (let day = 1; day <= 31; day++) {
+            const date = new Date(currentYear, currentMonth, day);
+            if (date.getMonth() !== currentMonth) break;
+
+            const row = document.createElement('tr');
+
+            if (day === currentDate.getDate()) {
+                row.classList.add('today');
+            }
+
+            const dateCell = document.createElement('th');
+            dateCell.textContent = `${monthLabels[currentMonth]} ${day}, ${currentYear}`;
+            dateCell.setAttribute('colspan', '2');
+            dateCell.setAttribute('scope', 'row');
+            row.appendChild(dateCell);
+
+            const dayCell = document.createElement('td');
+            dayCell.textContent = dayLabels[date.getDay()];
+            row.appendChild(dayCell);
+
+            for (let i = 0; i < 5; i++) {
+                const personCell = document.createElement('td');
+                personCell.innerHTML = `<input type="checkbox" value="off" />`;
+                row.appendChild(personCell);
+            }
+
+            document.querySelector('tbody').appendChild(row);
+
+            initData.cells.push({
+                date: `${monthLabels[currentMonth]} ${day}, ${currentYear}`,
+                day: dayLabels[date.getDay()],
+                chores: [false, false, false, false, false]
+            });
+        }
+
+        window.localStorage.setItem('choreMarksData', JSON.stringify(initData));
+    }
+
+    function loadChoreMarks() {
+        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        const tbody = document.querySelector('tbody');
+
+        data.cells.forEach((cellData, index) => {
+            const row = document.createElement('tr');
+
+            if (index === currentDate.getDate() - 1) {
+                row.classList.add('today');
+            }
+
+            const dateCell = document.createElement('th');
+            dateCell.textContent = cellData.date;
+            dateCell.setAttribute('scope', 'row');
+            dateCell.setAttribute('colspan', '2');
+            row.appendChild(dateCell);
+
+            const dayCell = document.createElement('td');
+            dayCell.textContent = cellData.day;
+            row.appendChild(dayCell);
+
+            cellData.chores.forEach((completed, choreIndex) => {
+                const personCell = document.createElement('td');
+                personCell.innerHTML = `<input type="checkbox" value="${completed ? 'on' : 'off'}" ${completed ? 'checked' : ''} />`;
+                row.appendChild(personCell);
+            });
+
+            tbody.appendChild(row);
+        });
+    }
+
+    function setupCheckboxListeners() {
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach((checkbox, index) => {
+            checkbox.addEventListener('change', () => {
+                const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+                const rowIndex = Math.floor(index / 5);
+                const personIndex = index % 5;
+                data.cells[rowIndex].chores[personIndex] = checkbox.checked;
+                window.localStorage.setItem('choreMarksData', JSON.stringify(data));
+            });
+        });
+    }
+</script>
+
+
+</html>
