@@ -106,11 +106,15 @@
 
     function loadCurrentMonthData() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        
         if (!data || (data.current && (data.current.month !== currentMonth || data.current.year !== currentYear))) {
-            addToHistory(data);
             initializeChoreMarks(data);
         } else {
             loadChoreMarks();
+        }
+
+        if (data && data.current && (data.current.month !== currentMonth || data.current.year !== currentYear)) {
+            addToHistory(data);
         }
     }
 
