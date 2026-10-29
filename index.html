@@ -94,7 +94,7 @@
 
         const migratedData = {
             history: [],
-            current: data ? data : { month: currentMonth, year: currentYear, cells: [] },
+            current: data ? data.cells.map((cell) => ({ date: cell.date , day: cell.day, marks: cell.chores })) : { month: currentMonth, year: currentYear, cells: [] },
             version: 1
         };
         window.localStorage.setItem('choreMarksData', JSON.stringify(migratedData));
