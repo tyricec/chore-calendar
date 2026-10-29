@@ -112,6 +112,7 @@
 
         if (migratedData.current !== null) {
             window.localStorage.setItem('choreMarksData', JSON.stringify(migratedData));
+            trackActivity('Data Migration', { previousVersion: data.version, newVersion: 1.2 });
         }
     }
 
@@ -139,6 +140,7 @@
 
     function initializeChoreMarks(data) {
         const initData = { month: currentMonth, year: currentYear, cells: [], version: 1.2 };
+        trackActivity('Initialize Chore Marks', { month: currentMonth, year: currentYear });
 
         for (let day = 1; day <= 31; day++) {
             const date = new Date(currentYear, currentMonth, day);
@@ -180,6 +182,8 @@
     }
 
     function loadChoreMarks() {
+        trackActivity('Load Chore Marks', { month: currentMonth, year: currentYear });
+
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
         const tbody = document.querySelector('tbody');
 
@@ -231,6 +235,7 @@
             cell.classList.remove('missed');
         }
         window.localStorage.setItem('choreMarksData', JSON.stringify(data));
+        trackActivity('Update Chore Mark', { month: currentMonth, year: currentYear, cellIndex: index, marked: marked });
     }
 
     function setupCellListeners() {
@@ -290,6 +295,7 @@
     }
 
     function clearMarks() {
+        trackActivity('Clear All Marks', { month: currentMonth, year: currentYear });
         if (confirm('Are you sure you want to clear all marks?')) {
             hideTable();
             showLoading();
@@ -306,6 +312,7 @@
     }
 
     function resetTable() {
+        trackActivity('Clear All Marks', { month: currentMonth, year: currentYear });
         const tbody = document.querySelector('tbody');
         tbody.innerHTML = '';
         initializeChoreMarks();
@@ -313,6 +320,7 @@
     }
 
     function handleHistory(event) {
+        trackActivity('View History');
         const isHistoryDisplayed = event && event.target && event.target.textContent === 'Hide History';
 
         if (isHistoryDisplayed) {
@@ -403,6 +411,7 @@
     }
 
     function resetData() {
+        trackActivity('Reset Data');
         if (confirm('Are you sure you want to reset all data? This will clear all marks and history.')) {
             window.localStorage.removeItem('choreMarksData');
             location.reload();
@@ -411,6 +420,18 @@
 
     function refreshPage() {
         location.reload();
+    }
+
+    function trackActivity(activityName, activityData = null) {
+        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        const activityLog = window.localStorage.getItem('activityLog') ? JSON.parse(window.localStorage.getItem('activityLog')) : [];
+        activityLog.push({ name: activityName, data: activityData, state: data,  timestamp: new Date().toISOString() });
+        
+        if (activityLog.length > 50) {
+            activityLog.shift();
+        }
+
+        window.localStorage.setItem('activityLog', JSON.stringify(activityLog));
     }
 </script>
 
