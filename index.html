@@ -57,6 +57,7 @@
     <button onclick="clearMarks()">Clear Marks</button>
     <button id="history">View History</button>
     <button onclick="resetData()">Reset Data</button>
+    <button onclick="refreshPage()">Refresh</button>
     <table>
         <thead>
             <tr>
@@ -398,6 +399,10 @@
             window.localStorage.removeItem('choreMarksData');
             location.reload();
         }
+    }
+
+    function refreshPage() {
+        location.reload();
     }
 </script>
 
