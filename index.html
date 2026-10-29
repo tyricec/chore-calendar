@@ -95,7 +95,8 @@
         const migratedData = {
             history: [],
             current: data ? data.cells.map((cell) => ({ date: cell.date , day: cell.day, marks: cell.chores })) : null,
-            version: 1.1
+            version: 1.1,
+            previousData: data,
         };
 
         if (migratedData.current !== null) {
