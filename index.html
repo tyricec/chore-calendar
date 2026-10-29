@@ -88,7 +88,7 @@
 
     function migrateDataIfNeeded() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        if (data && data.version === 1.1) {
+        if (!data || data && data.version === 1.1) {
             return;
         }
 
