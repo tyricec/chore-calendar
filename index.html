@@ -88,14 +88,14 @@
 
     function migrateDataIfNeeded() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        if (!data || data && data.version === 1.1) {
+        if (!data || data && data.version === 1.2) {
             return;
         }
 
         const migratedData = {
             history: [],
-            current: data ? data.cells.map((cell) => ({ date: cell.date , day: cell.day, marks: cell.chores })) : null,
-            version: 1.1,
+            current: data ? { month: data.current.month, year: data.current.year, cells: data.current.cells.map((cell) => ({ date: cell.date , day: cell.day, marks: cell.chores }))  } : null,
+            version: 1.2,
             previousData: data,
         };
 
@@ -127,7 +127,7 @@
     }
 
     function initializeChoreMarks(data) {
-        const initData = { month: currentMonth, year: currentYear, cells: [], version: 1.1 };
+        const initData = { month: currentMonth, year: currentYear, cells: [], version: 1.2 };
 
         for (let day = 1; day <= 31; day++) {
             const date = new Date(currentYear, currentMonth, day);
@@ -165,7 +165,7 @@
             });
         }
 
-        window.localStorage.setItem('choreMarksData', JSON.stringify({ history: data ? data.history : [], current: initData, version: 1.1 }));
+        window.localStorage.setItem('choreMarksData', JSON.stringify({ history: data ? data.history : [], current: initData, version: 1.2 }));
     }
 
     function loadChoreMarks() {
