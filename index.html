@@ -77,6 +77,14 @@
 </body>
 
 <script>
+    window.addEventListener('error', function (event) {
+        console.error('Error occurred: ', event.error);
+        localStorage.setItem('lastError', JSON.stringify({ message: event.error.message, stack: event.error.stack, data: JSON.parse(localStorage.getItem('choreMarksData')) }));
+        event.preventDefault();
+    });
+</script>
+
+<script>
     const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
