@@ -16,18 +16,30 @@
             width: 100%;
             min-width: 660px;
         }
-        th, td {
+
+        th,
+        td {
             padding: 8px;
             text-align: center;
             border: 1px solid #f0f0f0;
         }
+
         .today {
             background-color: #33a0af;
             color: white;
         }
+
         .missed {
-            background-color: red;
+            background-color: #a20000;
             color: white;
+        }
+
+        .loading {
+            display: flex;
+            width: 100%;
+            height: 60vh;
+            justify-content: center;
+            align-items: center;
         }
     </style>
 </head>
@@ -37,6 +49,12 @@
     <p>
         For each person, check the box if they missed their chore for that day.
     </p>
+    <p>
+        <b>Note:</b> The current day is highlighted in blue. If a chore is missed, the cell will turn red with an "X".
+        Only 3 months of history will be stored.
+    </p>
+    <button onclick="clearMarks()">Clear Marks</button>
+    <button id="history">View History</button>
     <table>
         <thead>
             <tr>
@@ -63,16 +81,45 @@
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
 
-    if (!window.localStorage.getItem('choreMarksData')) {
-        initializeChoreMarks();
-    } else {
-        loadChoreMarks();
+    migrateDataIfNeeded();
+    loadCurrentMonthData();
+    setupCellListeners();
+    setupHistoryButton();
+
+    function migrateDataIfNeeded() {
+        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        if (data && data.version === 1) {
+            return;
+        }
+
+        const migratedData = {
+            history: [],
+            current: data ? data : { month: currentMonth, year: currentYear, cells: [] },
+            version: 1
+        };
+        window.localStorage.setItem('choreMarksData', JSON.stringify(migratedData));
     }
 
-    setupCellListeners();
+    function loadCurrentMonthData() {
+        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        if (data.current.month !== currentMonth || data.current.year !== currentYear) {
+            addToHistory(data);
+            initializeChoreMarks(data);
+        } else {
+            loadChoreMarks();
+        }
+    }
 
-    function initializeChoreMarks() {
-        const initData = { month: currentMonth, year: currentYear, cells: [] };
+    function addToHistory(data) {
+        data.history.push(data.current);
+        if (data.history.length > 3) {
+            data.history.shift();
+        }
+        window.localStorage.setItem('choreMarksData', JSON.stringify(data));
+    }
+
+    function initializeChoreMarks(data) {
+        const initData = { month: currentMonth, year: currentYear, cells: [], version: 1 };
 
         for (let day = 1; day <= 31; day++) {
             const date = new Date(currentYear, currentMonth, day);
@@ -106,18 +153,18 @@
             initData.cells.push({
                 date: `${monthLabels[currentMonth]} ${day}, ${currentYear}`,
                 day: dayLabels[date.getDay()],
-                chores: [false, false, false, false, false]
+                marks: [false, false, false, false, false]
             });
         }
 
-        window.localStorage.setItem('choreMarksData', JSON.stringify(initData));
+        window.localStorage.setItem('choreMarksData', JSON.stringify({ history: data ? data.history : [], current: initData, version: 1 }));
     }
 
     function loadChoreMarks() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
         const tbody = document.querySelector('tbody');
 
-        data.cells.forEach((cellData, index) => {
+        data.current.cells.forEach((cellData, index) => {
             const row = document.createElement('tr');
 
             if (index === currentDate.getDate() - 1) {
@@ -134,7 +181,7 @@
             dayCell.textContent = cellData.day;
             row.appendChild(dayCell);
 
-            cellData.chores.forEach((marked, choreIndex) => {
+            cellData.marks.forEach((marked, choreIndex) => {
                 const personCell = document.createElement('td');
                 personCell.textContent = marked ? 'X' : '';
                 personCell.classList.add('person-cell');
@@ -150,24 +197,190 @@
         });
     }
 
+    function handleCellClick(event) {
+        const cell = event.target;
+        const index = Array.from(document.querySelectorAll('.person-cell')).indexOf(cell);
+        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        const rowIndex = Math.floor(index / 5);
+        const personIndex = index % 5;
+        const marked = !data.current.cells[rowIndex].marks[personIndex];
+        data.current.cells[rowIndex].marks[personIndex] = marked;
+        cell.textContent = marked ? 'X' : '';
+        if (marked) {
+            cell.classList.add('missed');
+        } else {
+            cell.classList.remove('missed');
+        }
+        window.localStorage.setItem('choreMarksData', JSON.stringify(data));
+    }
+
     function setupCellListeners() {
         const cells = document.querySelectorAll('.person-cell');
         cells.forEach((cell, index) => {
-            cell.addEventListener('click', () => {
-                const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-                const rowIndex = Math.floor(index / 5);
-                const personIndex = index % 5;
-                const marked = !data.cells[rowIndex].chores[personIndex];
-                data.cells[rowIndex].chores[personIndex] = marked;
-                cell.textContent = marked ? 'X' : '';
-                if (marked) {
-                    cell.classList.add('missed');
-                } else {
-                    cell.classList.remove('missed');
-                }
-                window.localStorage.setItem('choreMarksData', JSON.stringify(data));
-            });
+            cell.addEventListener('click', handleCellClick);
         });
+    }
+
+    function setupHistoryButton() {
+        const historyButton = document.getElementById('history');
+        historyButton.addEventListener('click', handleHistory);
+    }
+
+    function showLoading() {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.classList.add('loading');
+        loadingDiv.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 124 124" fill="none">
+                <line id="loading-line1" x1="40" x2="80" y1="40" y2="80" stroke="#a20000" stroke-width="8">
+                    <animate attributeName="x2" from="40" to="80" dur="0.4s" />
+                    <animate attributeName="y2" from="40" to="80" dur="0.4s" />
+                </line>
+                <line id="loading-line2" x1="80" x2="40" y1="40" y2="80" stroke="#a20000" stroke-width="8" />
+                <text fill="#000" font-size="10" x="40" y="116">Loading...</text>
+            </svg>
+        `;
+        document.body.appendChild(loadingDiv);
+    }
+
+    function hideLoading() {
+        const loadingDiv = document.querySelector('.loading');
+        if (loadingDiv) {
+            loadingDiv.remove();
+        }
+        document.querySelector('table').style.display = 'table';
+    }
+
+    function hideTable() {
+        removeCellListeners();
+        document.querySelector('table').style.display = 'none';
+    }
+
+    function removeCellListeners() {
+        const cells = document.querySelectorAll('.person-cell');
+        cells.forEach((cell) => {
+            cell.removeEventListener('click', handleCellClick);
+        });
+    }
+
+    function showTable() {
+        const tbody = document.querySelector('tbody');
+        tbody.innerHTML = '';
+        document.querySelector('table').style.display = 'table';
+        loadCurrentMonthData();
+        setupCellListeners();
+    }
+
+    function clearMarks() {
+        if (confirm('Are you sure you want to clear all marks?')) {
+            hideTable();
+            showLoading();
+            setTimeout(() => {
+                const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+                data.current.cells.forEach(cell => {
+                    cell.marks = [false, false, false, false, false];
+                });
+                window.localStorage.setItem('choreMarksData', JSON.stringify(data));
+                hideLoading();
+                showTable();
+            }, 1000);
+        }
+    }
+
+    function resetTable() {
+        const tbody = document.querySelector('tbody');
+        tbody.innerHTML = '';
+        initializeChoreMarks();
+        setupCellListeners();
+    }
+
+    function handleHistory(event) {
+        const isHistoryDisplayed = event && event.target && event.target.textContent === 'Hide History';
+
+        if (isHistoryDisplayed) {
+            removeHistoryView();
+            event.target.textContent = 'View History';
+            showTable();
+            return;
+        } else {
+            const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
+            if (!data.history || data.history.length === 0) {
+                alert('No history available.');
+                return;
+            }
+
+            event.target.textContent = 'Hide History';
+            hideTable();
+            renderHistory(data.history);
+        }
+
+    }
+
+    function renderHistory(history) {
+        const historyContainer = document.createElement('div');
+        historyContainer.id = 'history-container';
+
+        history.forEach((monthData, monthIndex) => {
+            const monthContainer = document.createElement('div');
+            const monthHeader = document.createElement('h2');
+            monthHeader.textContent = `${monthLabels[monthData.month]} ${monthData.year}`;
+            monthContainer.appendChild(monthHeader);
+            historyContainer.appendChild(monthContainer);
+
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            const headers = ['Date', 'Day', 'Michael', 'Shocka', 'Brooke', 'Jacob', 'Duke'];
+            headers.forEach((headerText, index) => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+
+                if (index === 0) {
+                    th.setAttribute('colspan', '2');
+                }
+
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            monthData.cells.forEach((cellData, cellIndex) => {
+                const row = document.createElement('tr');
+
+                const dateCell = document.createElement('th');
+                dateCell.textContent = cellData.date;
+                dateCell.setAttribute('scope', 'row');
+                dateCell.setAttribute('colspan', '2');
+                row.appendChild(dateCell);
+
+                const dayCell = document.createElement('td');
+                dayCell.textContent = cellData.day;
+                row.appendChild(dayCell);
+
+                cellData.marks.forEach((marked, choreIndex) => {
+                    const personCell = document.createElement('td');
+                    personCell.textContent = marked ? 'X' : '';
+                    personCell.classList.add('person-cell');
+
+                    if (marked) {
+                        personCell.classList.add('missed');
+                    }
+
+                    row.appendChild(personCell);
+                });
+
+                table.appendChild(row);
+            });
+            historyContainer.appendChild(table);
+        });
+
+        document.body.appendChild(historyContainer);
+    }
+
+    function removeHistoryView() {
+        const historyContainer = document.getElementById('history-container');
+        if (historyContainer) {
+            historyContainer.remove();
+        }
     }
 </script>
 
