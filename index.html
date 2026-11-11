@@ -60,12 +60,12 @@
         <b>Note:</b> The current day is highlighted in blue. If a chore is missed, the cell will turn red with an "X".
         Only 3 months of history will be stored.
     </p>
-    <button onclick="clearMarks()">Clear Marks</button>
+    <button id="clear-marks" onclick="clearMarks()">Clear Marks</button>
     <button id="history">View History</button>
     <button id="save-history">Save History</button>
     <button id="view-history-file">View History File</button>
-    <button onclick="resetData()">Reset Data</button>
-    <button onclick="refreshPage()">Refresh</button>
+    <button id="reset-data" onclick="resetData()">Reset Data</button>
+    <button id="refresh-page" onclick="refreshPage()">Refresh</button>
     <table>
         <thead>
             <tr>
@@ -353,6 +353,9 @@
         trackActivity('View History');
         const isHistoryDisplayed = event && event.target && event.target.textContent === 'Hide History';
 
+        const clearMarksButton = document.getElementById('clear-marks');
+        clearMarksButton.disabled = isHistoryDisplayed ? false : true;
+
         if (isHistoryDisplayed) {
             removeHistoryView();
             event.target.textContent = 'View History';
@@ -483,8 +486,13 @@
             trackActivity('Close History File');
             removeHistoryFileView();
             showTable();
+            const clearMarksButton = document.getElementById('clear-marks');
+            clearMarksButton.disabled = false;
             return;
         }
+
+        const clearMarksButton = document.getElementById('clear-marks');
+        clearMarksButton.disabled = true;
 
         trackActivity('View History File');
         const button = event.currentTarget;
@@ -517,6 +525,8 @@
             // Close the in-app history view if open, and detach the table's
             // cell listeners so their indexes are not thrown off by the file's cells.
             removeHistoryView();
+            const clearMarksButton = document.getElementById('clear-marks');
+            clearMarksButton.disabled = true;
             hideTable();
             renderHistory(history, 'history-file-container', `History File: ${file.name}`);
             button.textContent = 'Close History File';
