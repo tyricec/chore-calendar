@@ -91,7 +91,7 @@
 </script>
 
 <script>
-    const CURRENT_VERSION = 1.5;
+    const CURRENT_VERSION = 1.6;
     const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -142,7 +142,7 @@
 
         if (migratedData.current !== null) {
             window.localStorage.setItem('choreMarksData', JSON.stringify(migratedData));
-            trackActivity('Data Migration', { previousVersion: data.version, newVersion: CURRENT_VERSION });
+            trackActivity('Data Migration', { previousData: data, migratedData: migratedData, previousVersion: data.version, newVersion: CURRENT_VERSION });
         }
     }
 
