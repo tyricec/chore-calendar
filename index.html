@@ -129,7 +129,7 @@
                             version: CURRENT_VERSION,
                         });
                     } else {
-                        previousMonthData.cells = previousMonthData.cells.map((cell, index) => {
+                        previousMonthData.cells.forEach((cell, index) => {
                             cell.marks = cell.marks.map((mark, markIndex) => {
                                 return mark || monthData.cells[index].marks[markIndex];
                             });
