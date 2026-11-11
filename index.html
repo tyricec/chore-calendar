@@ -62,8 +62,8 @@
     </p>
     <button id="clear-marks" onclick="clearMarks()">Clear Marks</button>
     <button id="history">View History</button>
-    <button id="save-history">Save History</button>
-    <button id="view-history-file">View History File</button>
+    <button id="save-file">Save to File</button>
+    <button id="view-file">View File</button>
     <button id="reset-data" onclick="resetData()">Reset Data</button>
     <button id="refresh-page" onclick="refreshPage()">Refresh</button>
     <table>
@@ -105,7 +105,7 @@
     loadCurrentMonthData();
     setupCellListeners();
     setupHistoryButton();
-    setupHistoryFileButtons();
+    setupFileButtons();
 
     function migrateDataIfNeeded() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
@@ -369,7 +369,7 @@
             }
 
             // Only one history view may be open at a time.
-            removeHistoryFileView();
+            removeFileView();
             event.target.textContent = 'Hide History';
             hideTable();
             renderHistory(data.history);
@@ -377,7 +377,7 @@
 
     }
 
-    function renderHistory(history, containerId = 'history-container', title = null) {
+    function renderHistory(history, containerId = 'history-container', title = null, { subtitle = null } = {}) {
         const historyContainer = document.createElement('div');
         historyContainer.id = containerId;
 
@@ -385,6 +385,12 @@
             const titleHeader = document.createElement('h2');
             titleHeader.textContent = title;
             historyContainer.appendChild(titleHeader);
+        }
+
+        if (subtitle) {
+            const subtitleText = document.createElement('p');
+            subtitleText.textContent = subtitle;
+            historyContainer.appendChild(subtitleText);
         }
 
         history.forEach((monthData, monthIndex) => {
@@ -452,26 +458,28 @@
         document.getElementById('history').textContent = 'View History';
     }
 
-    function setupHistoryFileButtons() {
-        document.getElementById('save-history').addEventListener('click', handleSaveHistory);
-        document.getElementById('view-history-file').addEventListener('click', handleViewHistoryFile);
+    function setupFileButtons() {
+        document.getElementById('save-file').addEventListener('click', handleSaveToFile);
+        document.getElementById('view-file').addEventListener('click', handleViewFile);
     }
 
-    function handleSaveHistory() {
-        trackActivity('Save History');
+    function handleSaveToFile() {
+        trackActivity('Save to File');
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        if (!data || !data.history || data.history.length === 0) {
-            alert('No history available.');
+        const history = data && Array.isArray(data.history) ? data.history : [];
+        const current = data && data.current ? data.current : null;
+        if (!current && history.length === 0) {
+            alert('No data available to save.');
             return;
         }
 
-        const payload = { version: CURRENT_VERSION, exportedAt: new Date().toISOString(), history: data.history };
+        const payload = { version: CURRENT_VERSION, exportedAt: new Date().toISOString(), current: current, history: history };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 
         const link = document.createElement('a');
         link.href = url;
-        link.download = `chore-marks-history-${new Date().toISOString().slice(0, 10)}.json`;
+        link.download = `chore-marks-${new Date().toISOString().slice(0, 10)}.json`;
         link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
@@ -481,20 +489,17 @@
         setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 
-    function handleViewHistoryFile(event) {
+    function handleViewFile(event) {
         if (document.getElementById('history-file-container')) {
-            trackActivity('Close History File');
-            removeHistoryFileView();
+            trackActivity('Close File');
+            removeFileView();
             showTable();
             const clearMarksButton = document.getElementById('clear-marks');
             clearMarksButton.disabled = false;
             return;
         }
 
-        const clearMarksButton = document.getElementById('clear-marks');
-        clearMarksButton.disabled = true;
-
-        trackActivity('View History File');
+        trackActivity('View File');
         const button = event.currentTarget;
 
         // A throwaway input; its listeners are released through the AbortController
@@ -509,18 +514,26 @@
             const file = input.files && input.files[0];
             if (!file) return;
 
-            let history;
+            let contents;
             try {
-                history = parseHistoryFile(await file.text());
+                contents = parseSavedFile(await file.text());
             } catch (error) {
-                alert(`Could not read history file: ${error.message}`);
+                alert(`Could not read file: ${error.message}`);
                 return;
             }
 
-            if (history.length === 0) {
-                alert('The selected file contains no history.');
+            const { current, history, version, exportedAt } = contents;
+            // Show the file's latest month first, then the rest from newest to oldest.
+            const months = (current ? [current] : []).concat(history.slice().reverse());
+            if (months.length === 0) {
+                alert('The selected file contains no data.');
                 return;
             }
+
+            const details = [];
+            if (exportedAt) details.push(`Saved: ${new Date(exportedAt).toLocaleString()}`);
+            if (version !== undefined) details.push(`Version: ${version}`);
+            details.push(`Months: ${months.length}`);
 
             // Close the in-app history view if open, and detach the table's
             // cell listeners so their indexes are not thrown off by the file's cells.
@@ -528,8 +541,8 @@
             const clearMarksButton = document.getElementById('clear-marks');
             clearMarksButton.disabled = true;
             hideTable();
-            renderHistory(history, 'history-file-container', `History File: ${file.name}`);
-            button.textContent = 'Close History File';
+            renderHistory(months, 'history-file-container', `File: ${file.name}`, { subtitle: details.join(' · ') });
+            button.textContent = 'Close File';
         }, { signal: controller.signal });
 
         input.addEventListener('cancel', () => controller.abort(), { signal: controller.signal });
@@ -537,11 +550,19 @@
         input.click();
     }
 
-    function parseHistoryFile(text) {
+    // Accepts files from Save to File ({ current, history }), older history-only
+    // saves ({ history }), or a bare array of months.
+    function parseSavedFile(text) {
         const parsed = JSON.parse(text);
-        const history = Array.isArray(parsed) ? parsed : parsed && parsed.history;
+        const isObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+        const history = Array.isArray(parsed) ? parsed : isObject && parsed.history !== undefined ? parsed.history : [];
+        const current = isObject && parsed.current ? parsed.current : null;
+
         if (!Array.isArray(history)) {
-            throw new Error('No history found in file.');
+            throw new Error('History in file is not a list of months.');
+        }
+        if (isObject && parsed.history === undefined && !current) {
+            throw new Error('No chore marks data found in file.');
         }
 
         const isValidMonth = (monthData) => monthData
@@ -550,18 +571,18 @@
             && Array.isArray(monthData.cells)
             && monthData.cells.every(cell => cell && Array.isArray(cell.marks));
 
-        if (!history.every(isValidMonth)) {
-            throw new Error('File is not a valid chore marks history.');
+        if ((current && !isValidMonth(current)) || !history.every(isValidMonth)) {
+            throw new Error('File is not valid chore marks data.');
         }
-        return history;
+        return { current, history, version: isObject ? parsed.version : undefined, exportedAt: isObject ? parsed.exportedAt : undefined };
     }
 
-    function removeHistoryFileView() {
+    function removeFileView() {
         const container = document.getElementById('history-file-container');
         if (container) {
             container.remove();
         }
-        document.getElementById('view-history-file').textContent = 'View History File';
+        document.getElementById('view-file').textContent = 'View File';
     }
 
     function resetData() {
