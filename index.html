@@ -52,6 +52,84 @@
             background-color: rgba(0, 0, 0, 0.4);
         }
 
+        #summary-container table {
+            min-width: 0;
+            max-width: 480px;
+        }
+
+        #summary-container td,
+        #summary-container th {
+            border-color: #ccc;
+        }
+
+        .month-trigger {
+            margin: 0;
+            padding: 2px 0;
+            font-size: inherit;
+            color: #a20000;
+            background: none;
+            border: none;
+            text-decoration: underline dotted;
+            cursor: pointer;
+        }
+
+        .calendar-popover {
+            position: fixed;
+            inset: auto;
+            margin: 0;
+            width: 260px;
+            max-width: calc(100vw - 16px);
+            box-sizing: border-box;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .calendar-close {
+            margin: 0;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
+            line-height: 1;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .calendar-day-label {
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .calendar-day {
+            padding: 4px 0;
+            border-radius: 4px;
+        }
+
+        .calendar-footer {
+            margin: 8px 0 0;
+            font-size: 14px;
+        }
+
         .loading {
             display: flex;
             width: 100%;
@@ -73,6 +151,7 @@
     </p>
     <button id="clear-marks" onclick="clearMarks()">Clear Marks</button>
     <button id="history">View History</button>
+    <button id="summary">View Summary</button>
     <button id="save-file">Save to File</button>
     <button id="view-file">View File</button>
     <button id="restore-file">Restore From File</button>
@@ -94,615 +173,10 @@
             <!-- Rows will be added dynamically -->
         </tbody>
     </table>
+
+    <!-- Error handler loads first so it can record errors raised by app.js. -->
+    <script src="error-handler.js"></script>
+    <script src="app.js"></script>
 </body>
-
-<script>
-    window.addEventListener('error', function (event) {
-        console.error('Error occurred: ', event.error);
-        localStorage.setItem('lastError', JSON.stringify({ message: event.error.message, stack: event.error.stack, data: JSON.parse(localStorage.getItem('choreMarksData')) }));
-        event.preventDefault();
-    });
-</script>
-
-<script>
-    const CURRENT_VERSION = 1.7;
-    const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
-
-    migrateDataIfNeeded();
-    loadCurrentMonthData();
-    setupCellListeners();
-    setupHistoryButton();
-    setupFileButtons();
-
-    function migrateDataIfNeeded() {
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        if (!data || data && data.version === CURRENT_VERSION) {
-            return;
-        }
-
-        let migratedData = data;
-
-        if (data && data.version < CURRENT_VERSION) {
-            console.log('Migrating data from version', data.version, 'to version', CURRENT_VERSION);
-            migratedData = {
-                ...data,
-                version: CURRENT_VERSION,
-                current: data.current ? {
-                    ...data.current,
-                    version: CURRENT_VERSION
-                } : null,
-                history: data.history ? data.history.reduce((acc, monthData) => {
-                    const previousMonthData = acc.find(item => item.month === monthData.month && item.year === monthData.year);
-                    if (!previousMonthData) {
-                        acc.push({
-                            ...monthData,
-                            version: CURRENT_VERSION,
-                        });
-                    } else {
-                        previousMonthData.cells.forEach((cell, index) => {
-                            cell.marks = cell.marks.map((mark, markIndex) => {
-                                return mark || monthData.cells[index].marks[markIndex];
-                            });
-                        });
-                    }
-                    return acc;
-                }, []) : [],
-            };
-        }
-
-        if (migratedData.current !== null) {
-            window.localStorage.setItem('choreMarksData', JSON.stringify(migratedData));
-            trackActivity('Data Migration', { previousData: data, migratedData: migratedData, previousVersion: data.version, newVersion: CURRENT_VERSION });
-        }
-    }
-
-    function loadCurrentMonthData() {
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-
-        // A restored history-only file has no current month, so start one.
-        if (!data || !data.current || data.current.month !== currentMonth || data.current.year !== currentYear) {
-            startNewMonth(data);
-        } else {
-            loadChoreMarks();
-        }
-    }
-
-    function startNewMonth(data) {
-        const initData = { month: currentMonth, year: currentYear, cells: [], version: CURRENT_VERSION };
-        trackActivity('Start New Month', { month: currentMonth, year: currentYear });
-
-        for (let day = 1; day <= 31; day++) {
-            const date = new Date(currentYear, currentMonth, day);
-            if (date.getMonth() !== currentMonth) break;
-
-            const row = document.createElement('tr');
-
-            if (day === currentDate.getDate()) {
-                row.classList.add('today');
-            }
-
-            const dateCell = document.createElement('th');
-            dateCell.textContent = `${monthLabels[currentMonth]} ${day}, ${currentYear}`;
-            dateCell.setAttribute('colspan', '2');
-            dateCell.setAttribute('scope', 'row');
-            row.appendChild(dateCell);
-
-            const dayCell = document.createElement('td');
-            dayCell.textContent = dayLabels[date.getDay()];
-            row.appendChild(dayCell);
-
-            for (let i = 0; i < 5; i++) {
-                const personCell = document.createElement('td');
-                personCell.textContent = '';
-                personCell.classList.add('person-cell');
-                row.appendChild(personCell);
-            }
-
-            document.querySelector('tbody').appendChild(row);
-
-            initData.cells.push({
-                date: `${monthLabels[currentMonth]} ${day}, ${currentYear}`,
-                day: dayLabels[date.getDay()],
-                marks: [false, false, false, false, false]
-            });
-        }
-
-        const newHistoryData = data ? data.history : [];
-
-        if (data && data.current) {
-            newHistoryData.push(data.current);
-            if (newHistoryData.length > 18) {
-                newHistoryData.shift();
-            }
-        }
-
-        window.localStorage.setItem('choreMarksData', JSON.stringify({ history: newHistoryData, current: initData, version: CURRENT_VERSION }));
-    }
-
-    function loadChoreMarks() {
-        trackActivity('Load Chore Marks', { month: currentMonth, year: currentYear });
-
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        const tbody = document.querySelector('tbody');
-
-        data.current.cells.forEach((cellData, index) => {
-            const row = document.createElement('tr');
-
-            if (index === currentDate.getDate() - 1) {
-                row.classList.add('today');
-            }
-
-            const dateCell = document.createElement('th');
-            dateCell.textContent = cellData.date;
-            dateCell.setAttribute('scope', 'row');
-            dateCell.setAttribute('colspan', '2');
-            row.appendChild(dateCell);
-
-            const dayCell = document.createElement('td');
-            dayCell.textContent = cellData.day;
-            row.appendChild(dayCell);
-
-            cellData.marks.forEach((marked, choreIndex) => {
-                const personCell = document.createElement('td');
-                personCell.textContent = marked ? 'X' : '';
-                personCell.classList.add('person-cell');
-
-                if (marked) {
-                    personCell.classList.add('missed');
-                }
-
-                row.appendChild(personCell);
-            });
-
-            tbody.appendChild(row);
-        });
-    }
-
-    function handleCellClick(event) {
-        const cell = event.target;
-        const index = Array.from(document.querySelectorAll('.person-cell')).indexOf(cell);
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        const rowIndex = Math.floor(index / 5);
-        const personIndex = index % 5;
-        const marked = !data.current.cells[rowIndex].marks[personIndex];
-        data.current.cells[rowIndex].marks[personIndex] = marked;
-        cell.textContent = marked ? 'X' : '';
-        if (marked) {
-            cell.classList.add('missed');
-        } else {
-            cell.classList.remove('missed');
-        }
-        window.localStorage.setItem('choreMarksData', JSON.stringify(data));
-        trackActivity('Update Chore Mark', { month: currentMonth, year: currentYear, cellIndex: index, marked: marked });
-    }
-
-    function setupCellListeners() {
-        const cells = document.querySelectorAll('.person-cell');
-        cells.forEach((cell, index) => {
-            cell.addEventListener('click', handleCellClick);
-        });
-    }
-
-    function setupHistoryButton() {
-        const historyButton = document.getElementById('history');
-        historyButton.addEventListener('click', handleHistory);
-    }
-
-    function showLoading() {
-        const loadingDiv = document.createElement('div');
-        loadingDiv.classList.add('loading');
-        loadingDiv.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 124 124" fill="none">
-                <line id="loading-line1" x1="40" x2="80" y1="40" y2="80" stroke="#a20000" stroke-width="8">
-                    <animate attributeName="x2" from="40" to="80" dur="0.4s" />
-                    <animate attributeName="y2" from="40" to="80" dur="0.4s" />
-                </line>
-                <line id="loading-line2" x1="80" x2="40" y1="40" y2="80" stroke="#a20000" stroke-width="8" />
-                <text fill="#000" font-size="10" x="40" y="116">Loading...</text>
-            </svg>
-        `;
-        document.body.appendChild(loadingDiv);
-    }
-
-    function hideLoading() {
-        const loadingDiv = document.querySelector('.loading');
-        if (loadingDiv) {
-            loadingDiv.remove();
-        }
-        document.querySelector('table').style.display = 'table';
-    }
-
-    function hideTable() {
-        removeCellListeners();
-        document.querySelector('table').style.display = 'none';
-    }
-
-    function removeCellListeners() {
-        const cells = document.querySelectorAll('.person-cell');
-        cells.forEach((cell) => {
-            cell.removeEventListener('click', handleCellClick);
-        });
-    }
-
-    function showTable() {
-        const tbody = document.querySelector('tbody');
-        tbody.innerHTML = '';
-        document.querySelector('table').style.display = 'table';
-        loadCurrentMonthData();
-        setupCellListeners();
-    }
-
-    function clearMarks() {
-        trackActivity('Clear All Marks', { month: currentMonth, year: currentYear });
-        if (confirm('Are you sure you want to clear all marks?')) {
-            hideTable();
-            showLoading();
-            setTimeout(() => {
-                const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-                data.current.cells.forEach(cell => {
-                    cell.marks = [false, false, false, false, false];
-                });
-                window.localStorage.setItem('choreMarksData', JSON.stringify(data));
-                hideLoading();
-                showTable();
-            }, 1000);
-        }
-    }
-
-    function resetTable() {
-        trackActivity('Clear All Marks', { month: currentMonth, year: currentYear });
-        const tbody = document.querySelector('tbody');
-        tbody.innerHTML = '';
-        initializeChoreMarks();
-        setupCellListeners();
-    }
-
-    function handleHistory(event) {
-        trackActivity('View History');
-        const isHistoryDisplayed = event && event.target && event.target.textContent === 'Hide History';
-
-        const clearMarksButton = document.getElementById('clear-marks');
-        clearMarksButton.disabled = isHistoryDisplayed ? false : true;
-
-        if (isHistoryDisplayed) {
-            removeHistoryView();
-            event.target.textContent = 'View History';
-            showTable();
-            return;
-        } else {
-            const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-            if (!data.history || data.history.length === 0) {
-                alert('No history available.');
-                return;
-            }
-
-            // Only one history view may be open at a time.
-            removeFileView();
-            event.target.textContent = 'Hide History';
-            hideTable();
-            renderHistory(data.history);
-        }
-
-    }
-
-    function renderHistory(history, containerId = 'history-container', title = null, { subtitle = null } = {}) {
-        const historyContainer = document.createElement('div');
-        historyContainer.id = containerId;
-
-        if (title) {
-            const titleHeader = document.createElement('h2');
-            titleHeader.textContent = title;
-            historyContainer.appendChild(titleHeader);
-        }
-
-        if (subtitle) {
-            const subtitleText = document.createElement('p');
-            subtitleText.textContent = subtitle;
-            historyContainer.appendChild(subtitleText);
-        }
-
-        history.forEach((monthData, monthIndex) => {
-            const monthContainer = document.createElement('div');
-            const monthHeader = document.createElement('h2');
-            monthHeader.textContent = `${monthLabels[monthData.month] ?? monthData.month} ${monthData.year}`;
-            monthContainer.appendChild(monthHeader);
-            historyContainer.appendChild(monthContainer);
-
-            const table = document.createElement('table');
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            const headers = ['Date', 'Day', 'Michael', 'Shocka', 'Brooke', 'Jacob', 'Duke'];
-            headers.forEach((headerText, index) => {
-                const th = document.createElement('th');
-                th.textContent = headerText;
-
-                if (index === 0) {
-                    th.setAttribute('colspan', '2');
-                }
-
-                headerRow.appendChild(th);
-            });
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-
-            monthData.cells.forEach((cellData, cellIndex) => {
-                const row = document.createElement('tr');
-
-                const dateCell = document.createElement('th');
-                dateCell.textContent = cellData.date;
-                dateCell.setAttribute('scope', 'row');
-                dateCell.setAttribute('colspan', '2');
-                row.appendChild(dateCell);
-
-                const dayCell = document.createElement('td');
-                dayCell.textContent = cellData.day;
-                row.appendChild(dayCell);
-
-                cellData.marks.forEach((marked, choreIndex) => {
-                    const personCell = document.createElement('td');
-                    personCell.textContent = marked ? 'X' : '';
-                    personCell.classList.add('person-cell');
-
-                    if (marked) {
-                        personCell.classList.add('missed');
-                    }
-
-                    row.appendChild(personCell);
-                });
-
-                table.appendChild(row);
-            });
-            historyContainer.appendChild(table);
-        });
-
-        document.body.appendChild(historyContainer);
-    }
-
-    function removeHistoryView() {
-        const historyContainer = document.getElementById('history-container');
-        if (historyContainer) {
-            historyContainer.remove();
-        }
-        document.getElementById('history').textContent = 'View History';
-    }
-
-    function setupFileButtons() {
-        document.getElementById('save-file').addEventListener('click', handleSaveToFile);
-        document.getElementById('view-file').addEventListener('click', handleViewFile);
-        document.getElementById('restore-file').addEventListener('click', handleRestoreFromFile);
-    }
-
-    // Opens the native file picker using a throwaway input. Its listeners are
-    // released through the AbortController whether the user picks a file or cancels.
-    function pickJsonFile(onFile) {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        const controller = new AbortController();
-
-        input.addEventListener('change', () => {
-            controller.abort();
-            const file = input.files && input.files[0];
-            if (file) onFile(file);
-        }, { signal: controller.signal });
-
-        input.addEventListener('cancel', () => controller.abort(), { signal: controller.signal });
-
-        input.click();
-    }
-
-    async function readSavedFile(file) {
-        try {
-            const contents = parseSavedFile(await file.text());
-            if (!contents.current && contents.history.length === 0) {
-                alert('The selected file contains no data.');
-                return null;
-            }
-            return contents;
-        } catch (error) {
-            alert(`Could not read file: ${error.message}`);
-            return null;
-        }
-    }
-
-    function describeSavedFile({ current, history, version, exportedAt }) {
-        const details = [];
-        if (exportedAt) details.push(`Saved: ${new Date(exportedAt).toLocaleString()}`);
-        if (version !== undefined) details.push(`Version: ${version}`);
-        details.push(`Months: ${(current ? 1 : 0) + history.length}`);
-        return details.join(' · ');
-    }
-
-    function handleRestoreFromFile() {
-        trackActivity('Restore From File');
-        pickJsonFile(async (file) => {
-            const contents = await readSavedFile(file);
-            if (contents) {
-                showRestoreDialog(file.name, contents);
-            }
-        });
-    }
-
-    function showRestoreDialog(fileName, contents) {
-        const storedData = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        const hasStoredData = !!(storedData && (storedData.current || (storedData.history && storedData.history.length > 0)));
-
-        const dialog = document.createElement('dialog');
-        const heading = document.createElement('h2');
-        heading.textContent = 'Restore From File';
-        const warning = document.createElement('p');
-        warning.textContent = `Restoring from "${fileName}" will overwrite your current marks and history. Any data not saved to a file may be lost. Save a backup of your current data first if you may need it.`;
-        const details = document.createElement('p');
-        details.textContent = describeSavedFile(contents);
-
-        const backupButton = document.createElement('button');
-        backupButton.textContent = 'Save Backup';
-        backupButton.disabled = !hasStoredData;
-        const restoreButton = document.createElement('button');
-        restoreButton.textContent = 'Restore';
-        const cancelButton = document.createElement('button');
-        cancelButton.textContent = 'Cancel';
-
-        dialog.append(heading, warning, details, backupButton, restoreButton, cancelButton);
-
-        // Every listener is tied to this controller and released when the dialog
-        // closes, whether by Restore, Cancel, or the Escape key.
-        const controller = new AbortController();
-        const { signal } = controller;
-
-        backupButton.addEventListener('click', () => {
-            handleSaveToFile();
-            backupButton.textContent = 'Backup Saved';
-        }, { signal });
-
-        restoreButton.addEventListener('click', () => {
-            dialog.close();
-            restoreData(fileName, contents);
-        }, { signal });
-
-        cancelButton.addEventListener('click', () => dialog.close(), { signal });
-
-        dialog.addEventListener('close', () => {
-            controller.abort();
-            dialog.remove();
-        }, { signal });
-
-        document.body.appendChild(dialog);
-        dialog.showModal();
-    }
-
-    function restoreData(fileName, { current, history, version }) {
-        const previousData = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        // Keep the file's version so the normal load runs any migrations from it.
-        const restoredVersion = version ?? (current || history[0] || {}).version ?? CURRENT_VERSION;
-        const restoredData = { version: restoredVersion, current: current, history: history };
-
-        trackActivity('Restore From File Applied', { fileName: fileName, previousData: previousData, restoredData: restoredData });
-        window.localStorage.setItem('choreMarksData', JSON.stringify(restoredData));
-        location.reload();
-    }
-
-    function handleSaveToFile() {
-        trackActivity('Save to File');
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        const history = data && Array.isArray(data.history) ? data.history : [];
-        const current = data && data.current ? data.current : null;
-        if (!current && history.length === 0) {
-            alert('No data available to save.');
-            return;
-        }
-
-        const payload = { version: CURRENT_VERSION, exportedAt: new Date().toISOString(), current: current, history: history };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `chore-marks-${new Date().toISOString().slice(0, 10)}.json`;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-
-        // Revoke on the next task so the browser has started the download first.
-        setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-
-    function handleViewFile(event) {
-        if (document.getElementById('history-file-container')) {
-            trackActivity('Close File');
-            removeFileView();
-            showTable();
-            const clearMarksButton = document.getElementById('clear-marks');
-            clearMarksButton.disabled = false;
-            return;
-        }
-
-        trackActivity('View File');
-        const button = event.currentTarget;
-
-        pickJsonFile(async (file) => {
-            const contents = await readSavedFile(file);
-            if (!contents) return;
-
-            // Show the file's latest month first, then the rest from newest to oldest.
-            const months = (contents.current ? [contents.current] : []).concat(contents.history.slice().reverse());
-
-            // Close the in-app history view if open, and detach the table's
-            // cell listeners so their indexes are not thrown off by the file's cells.
-            removeHistoryView();
-            const clearMarksButton = document.getElementById('clear-marks');
-            clearMarksButton.disabled = true;
-            hideTable();
-            renderHistory(months, 'history-file-container', `File: ${file.name}`, { subtitle: describeSavedFile(contents) });
-            button.textContent = 'Close File';
-        });
-    }
-
-    // Accepts files from Save to File ({ current, history }), older history-only
-    // saves ({ history }), or a bare array of months.
-    function parseSavedFile(text) {
-        const parsed = JSON.parse(text);
-        const isObject = parsed && typeof parsed === 'object' && !Array.isArray(parsed);
-        const history = Array.isArray(parsed) ? parsed : isObject && parsed.history !== undefined ? parsed.history : [];
-        const current = isObject && parsed.current ? parsed.current : null;
-
-        if (!Array.isArray(history)) {
-            throw new Error('History in file is not a list of months.');
-        }
-        if (isObject && parsed.history === undefined && !current) {
-            throw new Error('No chore marks data found in file.');
-        }
-
-        const isValidMonth = (monthData) => monthData
-            && Number.isInteger(monthData.month)
-            && Number.isInteger(monthData.year)
-            && Array.isArray(monthData.cells)
-            && monthData.cells.every(cell => cell && Array.isArray(cell.marks));
-
-        if ((current && !isValidMonth(current)) || !history.every(isValidMonth)) {
-            throw new Error('File is not valid chore marks data.');
-        }
-        return { current, history, version: isObject ? parsed.version : undefined, exportedAt: isObject ? parsed.exportedAt : undefined };
-    }
-
-    function removeFileView() {
-        const container = document.getElementById('history-file-container');
-        if (container) {
-            container.remove();
-        }
-        document.getElementById('view-file').textContent = 'View File';
-    }
-
-    function resetData() {
-        trackActivity('Reset Data');
-        if (confirm('Are you sure you want to reset all data? This will clear all marks and history.')) {
-            window.localStorage.removeItem('choreMarksData');
-            location.reload();
-        }
-    }
-
-    function refreshPage() {
-        location.reload();
-    }
-
-    function trackActivity(activityName, activityData = null) {
-        const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
-        const activityLog = window.localStorage.getItem('activityLog') ? JSON.parse(window.localStorage.getItem('activityLog')) : [];
-        activityLog.push({ name: activityName, data: activityData, state: data, timestamp: new Date().toISOString() });
-
-        if (activityLog.length > 100) {
-            activityLog.shift();
-        }
-
-        window.localStorage.setItem('activityLog', JSON.stringify(activityLog));
-    }
-</script>
-
 
 </html>
