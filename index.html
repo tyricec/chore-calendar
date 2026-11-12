@@ -149,14 +149,14 @@
         <b>Note:</b> The current day is highlighted in blue. If a chore is missed, the cell will turn red with an "X".
         Only 18 months of history will be stored.
     </p>
-    <button id="clear-marks" onclick="clearMarks()">Clear Marks</button>
+    <button id="clear-marks">Clear Marks</button>
     <button id="history">View History</button>
     <button id="summary">View Summary</button>
     <button id="save-file">Save to File</button>
     <button id="view-file">View File</button>
     <button id="restore-file">Restore From File</button>
-    <button id="reset-data" onclick="resetData()">Reset Data</button>
-    <button id="refresh-page" onclick="refreshPage()">Refresh</button>
+    <button id="reset-data">Reset Data</button>
+    <button id="refresh-page">Refresh</button>
     <table>
         <thead>
             <tr>
@@ -174,9 +174,9 @@
         </tbody>
     </table>
 
-    <!-- Error handler loads first so it can record errors raised by app.js. -->
-    <script src="error-handler.js"></script>
-    <script src="app.js"></script>
+    <!-- The error handler is a classic script so it is registered before the app modules run. -->
+    <script src="js/error-handler.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 
 </html>
