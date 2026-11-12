@@ -41,6 +41,17 @@
             color: white;
         }
 
+        dialog {
+            max-width: 480px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 16px 24px;
+        }
+
+        dialog::backdrop {
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
         .loading {
             display: flex;
             width: 100%;
@@ -58,12 +69,13 @@
     </p>
     <p>
         <b>Note:</b> The current day is highlighted in blue. If a chore is missed, the cell will turn red with an "X".
-        Only 3 months of history will be stored.
+        Only 18 months of history will be stored.
     </p>
     <button id="clear-marks" onclick="clearMarks()">Clear Marks</button>
     <button id="history">View History</button>
     <button id="save-file">Save to File</button>
     <button id="view-file">View File</button>
+    <button id="restore-file">Restore From File</button>
     <button id="reset-data" onclick="resetData()">Reset Data</button>
     <button id="refresh-page" onclick="refreshPage()">Refresh</button>
     <table>
@@ -152,7 +164,8 @@
     function loadCurrentMonthData() {
         const data = JSON.parse(window.localStorage.getItem('choreMarksData'));
 
-        if (!data || (data.current && (data.current.month !== currentMonth || data.current.year !== currentYear))) {
+        // A restored history-only file has no current month, so start one.
+        if (!data || !data.current || data.current.month !== currentMonth || data.current.year !== currentYear) {
             startNewMonth(data);
         } else {
             loadChoreMarks();
@@ -461,6 +474,117 @@
     function setupFileButtons() {
         document.getElementById('save-file').addEventListener('click', handleSaveToFile);
         document.getElementById('view-file').addEventListener('click', handleViewFile);
+        document.getElementById('restore-file').addEventListener('click', handleRestoreFromFile);
+    }
+
+    // Opens the native file picker using a throwaway input. Its listeners are
+    // released through the AbortController whether the user picks a file or cancels.
+    function pickJsonFile(onFile) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        const controller = new AbortController();
+
+        input.addEventListener('change', () => {
+            controller.abort();
+            const file = input.files && input.files[0];
+            if (file) onFile(file);
+        }, { signal: controller.signal });
+
+        input.addEventListener('cancel', () => controller.abort(), { signal: controller.signal });
+
+        input.click();
+    }
+
+    async function readSavedFile(file) {
+        try {
+            const contents = parseSavedFile(await file.text());
+            if (!contents.current && contents.history.length === 0) {
+                alert('The selected file contains no data.');
+                return null;
+            }
+            return contents;
+        } catch (error) {
+            alert(`Could not read file: ${error.message}`);
+            return null;
+        }
+    }
+
+    function describeSavedFile({ current, history, version, exportedAt }) {
+        const details = [];
+        if (exportedAt) details.push(`Saved: ${new Date(exportedAt).toLocaleString()}`);
+        if (version !== undefined) details.push(`Version: ${version}`);
+        details.push(`Months: ${(current ? 1 : 0) + history.length}`);
+        return details.join(' · ');
+    }
+
+    function handleRestoreFromFile() {
+        trackActivity('Restore From File');
+        pickJsonFile(async (file) => {
+            const contents = await readSavedFile(file);
+            if (contents) {
+                showRestoreDialog(file.name, contents);
+            }
+        });
+    }
+
+    function showRestoreDialog(fileName, contents) {
+        const storedData = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        const hasStoredData = !!(storedData && (storedData.current || (storedData.history && storedData.history.length > 0)));
+
+        const dialog = document.createElement('dialog');
+        const heading = document.createElement('h2');
+        heading.textContent = 'Restore From File';
+        const warning = document.createElement('p');
+        warning.textContent = `Restoring from "${fileName}" will overwrite your current marks and history. Any data not saved to a file may be lost. Save a backup of your current data first if you may need it.`;
+        const details = document.createElement('p');
+        details.textContent = describeSavedFile(contents);
+
+        const backupButton = document.createElement('button');
+        backupButton.textContent = 'Save Backup';
+        backupButton.disabled = !hasStoredData;
+        const restoreButton = document.createElement('button');
+        restoreButton.textContent = 'Restore';
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = 'Cancel';
+
+        dialog.append(heading, warning, details, backupButton, restoreButton, cancelButton);
+
+        // Every listener is tied to this controller and released when the dialog
+        // closes, whether by Restore, Cancel, or the Escape key.
+        const controller = new AbortController();
+        const { signal } = controller;
+
+        backupButton.addEventListener('click', () => {
+            handleSaveToFile();
+            backupButton.textContent = 'Backup Saved';
+        }, { signal });
+
+        restoreButton.addEventListener('click', () => {
+            dialog.close();
+            restoreData(fileName, contents);
+        }, { signal });
+
+        cancelButton.addEventListener('click', () => dialog.close(), { signal });
+
+        dialog.addEventListener('close', () => {
+            controller.abort();
+            dialog.remove();
+        }, { signal });
+
+        document.body.appendChild(dialog);
+        dialog.showModal();
+    }
+
+    function restoreData(fileName, { current, history, version }) {
+        const previousData = JSON.parse(window.localStorage.getItem('choreMarksData'));
+        // Keep the file's version so the normal load runs any migrations from it.
+        const restoredVersion = version ?? (current || history[0] || {}).version ?? CURRENT_VERSION;
+        const restoredData = { version: restoredVersion, current: current, history: history };
+
+        trackActivity('Restore From File Applied', { fileName: fileName, previousData: previousData, restoredData: restoredData });
+        window.localStorage.setItem('choreMarksData', JSON.stringify(restoredData));
+        location.reload();
     }
 
     function handleSaveToFile() {
@@ -502,38 +626,12 @@
         trackActivity('View File');
         const button = event.currentTarget;
 
-        // A throwaway input; its listeners are released through the AbortController
-        // whether the user picks a file or cancels the picker.
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json,application/json';
-        const controller = new AbortController();
+        pickJsonFile(async (file) => {
+            const contents = await readSavedFile(file);
+            if (!contents) return;
 
-        input.addEventListener('change', async () => {
-            controller.abort();
-            const file = input.files && input.files[0];
-            if (!file) return;
-
-            let contents;
-            try {
-                contents = parseSavedFile(await file.text());
-            } catch (error) {
-                alert(`Could not read file: ${error.message}`);
-                return;
-            }
-
-            const { current, history, version, exportedAt } = contents;
             // Show the file's latest month first, then the rest from newest to oldest.
-            const months = (current ? [current] : []).concat(history.slice().reverse());
-            if (months.length === 0) {
-                alert('The selected file contains no data.');
-                return;
-            }
-
-            const details = [];
-            if (exportedAt) details.push(`Saved: ${new Date(exportedAt).toLocaleString()}`);
-            if (version !== undefined) details.push(`Version: ${version}`);
-            details.push(`Months: ${months.length}`);
+            const months = (contents.current ? [contents.current] : []).concat(contents.history.slice().reverse());
 
             // Close the in-app history view if open, and detach the table's
             // cell listeners so their indexes are not thrown off by the file's cells.
@@ -541,13 +639,9 @@
             const clearMarksButton = document.getElementById('clear-marks');
             clearMarksButton.disabled = true;
             hideTable();
-            renderHistory(months, 'history-file-container', `File: ${file.name}`, { subtitle: details.join(' · ') });
+            renderHistory(months, 'history-file-container', `File: ${file.name}`, { subtitle: describeSavedFile(contents) });
             button.textContent = 'Close File';
-        }, { signal: controller.signal });
-
-        input.addEventListener('cancel', () => controller.abort(), { signal: controller.signal });
-
-        input.click();
+        });
     }
 
     // Accepts files from Save to File ({ current, history }), older history-only
